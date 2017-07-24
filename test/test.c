@@ -4,15 +4,15 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <sys/mman.h>
-#include <sys/time.h>
+#include <time.h>
 #include <string.h>
 #include <assert.h>
-
+#include <unistd.h>
 
 void usage(int ac, char **av)
 {
-	printf("usage: %s cached   addr\n", av[0]);
-	printf("       %s uncached addr\n", av[0]);
+	printf("usage: %s cached   uncached_mem_dev\n", av[0]);
+	printf("       %s uncached uncached_mem_dev\n", av[0]);
 	exit(1);
 }
 
@@ -36,16 +36,24 @@ double time_now(void)
 #endif
 }
 
-void *get_uncached_mem(void *base_addr, int size)
-{
-	int fd = open("/dev/mem", O_RDWR | O_SYNC, 0);
-	if (fd == -1) die("couldn't open /dev/mem, are you root ?");
+#define PAGE_SIZE (sysconf(_SC_PAGESIZE))
+#define PAGE_MASK (~(PAGE_SIZE - 1))
+
+void *get_uncached_mem(char *dev, int size)
+{	
+	assert(PAGE_SIZE != -1);
 	
-	printf("mmap()'ing %p\n", base_addr);
+	int fd = open(dev, O_RDWR, 0);
+	if (fd == -1) die("couldn't open device");
 	
-	void *map = mmap(0, size, PROT_READ /*| PROT_WRITE*/, MAP_FILE | MAP_SHARED, fd, (off_t)base_addr);
+	printf("mmap()'ing %s\n", dev);
+
+	if (size & ~PAGE_MASK)
+		size = (size & PAGE_MASK) + PAGE_SIZE;
+
+	void *map = mmap(0, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 	if (map == MAP_FAILED)
-		die("mmap failed. Note: we need a kernel without CONFIG_STRICT_DEVMEM.");	
+		die("mmap failed.");
 	return map;
 }
 
@@ -61,18 +69,16 @@ int main(int ac, char **av)
 	else if (!strcmp(av[1], "cached"))    uncached_mem_test = 0;
 	else    usage(ac, av);
 
-	void *base_addr = (void*)strtoul(av[2], NULL, 16);
-
 	void *map;
 	if (uncached_mem_test)
-		map = get_uncached_mem(base_addr, size);
+		map = get_uncached_mem(av[2], size);
 	else    
 		map = malloc(size);	/* test normal memory */
 
 	unsigned int *pt = ((unsigned int*)map);
 	/* uncached mem should start with 0xdeadbeaf */
 	printf("read %#0x\n", *pt);
-	if (uncached_mem_test) assert(*pt == 0xdeadbeaf);
+	//if (uncached_mem_test) assert(*pt == 0xdeadbeaf);
 	//printf("sizeof(off_t): %i\n", sizeof(off_t));
 
 	/*********************************************************************/
@@ -86,6 +92,7 @@ int main(int ac, char **av)
 	unsigned int sum = 0;
 	int reads = 0;
 	for (int i = 0; i < tsize - STEP; i++)
+		for (int k = 0; k < 10; k++)
 		for (int j = 0; j < STEP; j++) {
 			sum += pt[i+j];
 			reads++;
