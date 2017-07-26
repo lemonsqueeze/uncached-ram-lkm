@@ -75,22 +75,17 @@ int main(int ac, char **av)
 	else    
 		map = malloc(size);	/* test normal memory */
 
-	unsigned int *pt = ((unsigned int*)map);
-	/* uncached mem should start with 0xdeadbeaf */
-	printf("read %#0x\n", *pt);
-	//if (uncached_mem_test) assert(*pt == 0xdeadbeaf);
-	//printf("sizeof(off_t): %i\n", sizeof(off_t));
 
 	/*********************************************************************/
-	/* benchmark reads */
+	/* Read benchmarks */
 
 	double time_start = time_now();
 
+	unsigned int *pt = ((unsigned int*)map);
 	int tsize = size / sizeof(int);
-	//int t[tsize];
 	#define STEP 10
 	unsigned int sum = 0;
-	int reads = 0;
+	unsigned int reads = 0;
 	for (int i = 0; i < tsize - STEP; i++)
 		for (int k = 0; k < 10; k++)
 		for (int j = 0; j < STEP; j++) {
@@ -98,7 +93,7 @@ int main(int ac, char **av)
 			reads++;
 		}
 
-	printf("%s mem test: %i reads in %.2fs                                     (sum: %i)\n", 
+	printf("%s mem test: %u reads in %.2fs                                     (sum: %i)\n", 
 	       (uncached_mem_test ? "uncached" : "cached"),
 	       reads, time_now() - time_start, sum);
 }
