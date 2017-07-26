@@ -158,6 +158,8 @@ static int hello_device_op_mmap(struct file *file, struct vm_area_struct *vma)
 	if (ret)
 		return ret;
 
+	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
+
 	ret = fw_iso_buffer_map_vma(&client->buffer, vma);
 	if (ret)
 		goto fail;
