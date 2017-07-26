@@ -31,7 +31,7 @@ module_param(name, charp, S_IRUGO); ///< Param desc. charp = char ptr, S_IRUGO c
 MODULE_PARM_DESC(name, "The name to display in /var/log/kern.log");  ///< parameter description
 
 struct fw_iso_buffer {
-        struct page **pages;
+        char **pages;
         int page_count;
 };
 
@@ -43,10 +43,16 @@ struct client {
 static void fw_iso_buffer_destroy(struct fw_iso_buffer *buffer)
 {
 	int i;
-
 	printk(KERN_INFO "Freeing pages\n");
+	
 	for (i = 0; i < buffer->page_count; i++)
-		__free_page(buffer->pages[i]);
+		if (buffer->pages[i]) {
+			char *addr = buffer->pages[i];
+
+			set_memory_wb((unsigned long)addr, 1);
+			ClearPageReserved(virt_to_page(addr));
+			free_page((unsigned long)addr);
+		}
 
 	kfree(buffer->pages);
 	buffer->pages = NULL;
@@ -59,17 +65,22 @@ static int fw_iso_buffer_alloc(struct fw_iso_buffer *buffer, int page_count)
 	int i;
 
 	printk(KERN_INFO "Allocating %i pages\n", page_count);
-	buffer->page_count = 0;
-	buffer->pages = kmalloc(page_count * sizeof(buffer->pages[0]), GFP_KERNEL);
+	buffer->page_count = page_count;
+	buffer->pages = kzalloc(page_count * sizeof(buffer->pages[0]), GFP_KERNEL);
 	if (buffer->pages == NULL)
 		return -ENOMEM;
 
 	for (i = 0; i < page_count; i++) {
-		buffer->pages[i] = alloc_page(GFP_KERNEL | __GFP_ZERO);
-		if (buffer->pages[i] == NULL)
+		char *addr = (char*) __get_free_page(GFP_KERNEL);
+		if (addr == NULL)
+			break;
+		
+		buffer->pages[i] = addr;
+		SetPageReserved(virt_to_page(addr));
+		if (set_memory_uc((unsigned long)addr, 1))
 			break;
 	}
-	buffer->page_count = i;
+	
 	if (i < page_count) {
 		fw_iso_buffer_destroy(buffer);
 		return -ENOMEM;
@@ -87,7 +98,7 @@ static int fw_iso_buffer_map_vma(struct fw_iso_buffer *buffer,
 
 	uaddr = vma->vm_start;
 	for (i = 0; i < buffer->page_count; i++) {
-		err = vm_insert_page(vma, uaddr, buffer->pages[i]);
+		err = vm_insert_page(vma, uaddr, virt_to_page(buffer->pages[i]));
 		if (err)
 			return err;
 
