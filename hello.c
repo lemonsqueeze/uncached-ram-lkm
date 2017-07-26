@@ -155,14 +155,14 @@ static int hello_device_op_mmap(struct file *file, struct vm_area_struct *vma)
 		return -EINVAL;
 
 	ret = fw_iso_buffer_alloc(&client->buffer, page_count);
-	if (ret < 0)
+	if (ret)
 		return ret;
 
 	ret = fw_iso_buffer_map_vma(&client->buffer, vma);
-	if (ret < 0)
+	if (ret)
 		goto fail;
-	printk(KERN_INFO "mmap successful\n");
 
+	printk(KERN_INFO "mmap successful\n");
 	return 0;
  fail:
 	fw_iso_buffer_destroy(&client->buffer);
