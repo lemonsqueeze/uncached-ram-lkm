@@ -175,6 +175,10 @@ static int device_op_mmap(struct file *file, struct vm_area_struct *vma)
 	if (size & ~PAGE_MASK)
 		return -EINVAL;
 
+	/* only one mmap() call per device for now */
+	if (client->buffer.pages)
+		return -EAGAIN;	
+
 	ret = buffer_alloc(&client->buffer, page_count);
 	if (ret)
 		return ret;
