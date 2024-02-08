@@ -12,7 +12,7 @@
 #include <linux/kernel.h>
 
 #include <linux/page-flags.h>
-#include <asm/cacheflush.h>
+#include <asm/set_memory.h>
 
 #include <linux/device.h>
 #include <linux/fs.h>
@@ -26,7 +26,7 @@ MODULE_VERSION("0.1");
 
 struct buffer {
         char **pages;
-        int page_count;
+        size_t page_count;
 };
 
 struct client {
@@ -63,7 +63,7 @@ struct client {
 
 static void buffer_destroy(struct buffer *buffer)
 {
-	int i;
+	size_t i;
 	printk(KERN_INFO "Freeing pages\n");
 	
 	for (i = 0; i < buffer->page_count; i++)
@@ -75,21 +75,22 @@ static void buffer_destroy(struct buffer *buffer)
 			free_page((unsigned long)addr);
 		}
 
-	kfree(buffer->pages);
+	kvfree(buffer->pages);
 	buffer->pages = NULL;
 	buffer->page_count = 0;
 }
 
 
-static int buffer_alloc(struct buffer *buffer, int page_count)
+static int buffer_alloc(struct buffer *buffer, size_t page_count)
 {
-	int i;
+	size_t i;
 
-	printk(KERN_INFO "Allocating %i pages\n", page_count);
+	printk(KERN_INFO "Allocating %zu pages\n", page_count);
 	buffer->page_count = page_count;
-	buffer->pages = kzalloc(page_count * sizeof(buffer->pages[0]), GFP_KERNEL);
-	if (buffer->pages == NULL)
+	buffer->pages = kvcalloc(page_count, sizeof(buffer->pages[0]), GFP_KERNEL);
+	if (buffer->pages == NULL) {
 		return -ENOMEM;
+	}
 
 	for (i = 0; i < page_count; i++) {
 		char *addr = (char*) __get_free_page(GFP_KERNEL);
@@ -115,7 +116,8 @@ static int buffer_map_vma(struct buffer *buffer,
 			  struct vm_area_struct *vma)
 {
 	unsigned long uaddr;
-	int i, err;
+	size_t i; 
+	int err;
 
 	uaddr = vma->vm_start;
 	for (i = 0; i < buffer->page_count; i++) {
@@ -161,7 +163,8 @@ static int device_op_mmap(struct file *file, struct vm_area_struct *vma)
 {
 	struct client *client = file->private_data;
 	unsigned long size;
-	int page_count, ret;
+	size_t page_count;
+        int ret;
 
 	if (!(vma->vm_flags & VM_SHARED))
 		return -EINVAL;
